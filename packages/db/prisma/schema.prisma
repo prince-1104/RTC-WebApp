@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String      @id @default(uuid())
+  email     String      @unique
+  password  String
+  name      String
+  photo     String?
+  createdAt DateTime    @default(now())
+
+  rooms     Room[]      @relation("UserRooms")
+  messages  Message[]
+  drawings  DrawEvent[]
+  roomMemberships RoomMember[]
+}
+
+model Room {
+  id          Int         @id @default(autoincrement())
+  slug        String      @unique
+  name        String
+  createdAt   DateTime    @default(now())
+  adminId     String
+  admin       User        @relation("UserRooms", fields: [adminId], references: [id], onDelete: Cascade)
+  messages    Message[]
+  drawings    DrawEvent[]
+  members     RoomMember[]
+}
+
+model Message {
+  id        Int       @id @default(autoincrement())
+  roomId    Int
+  content   String
+  userId    String
+  createdAt DateTime  @default(now())
+  
+  room      Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DrawEvent {
+  id        Int      @id @default(autoincrement())
+  roomId    Int
+  userId    String
+  type      String   // e.g., 'rectangle', 'pencil'
+  data      Json     // serialized shape
+  createdAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+}
+
+
+model RoomMember {
+  id      Int     @id @default(autoincrement())
+  roomId  Int
+  userId  String
+  
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+}
