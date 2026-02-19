@@ -28,7 +28,8 @@ export function useDrawingSocket({
   useEffect(() => {
     if (!token || !roomId) return;
 
-    const ws = new WebSocket(`ws://localhost:8080?token=${token}`);
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080";
+    const ws = new WebSocket(`${wsUrl}?token=${token}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -48,7 +49,7 @@ export function useDrawingSocket({
     };
   }, [token, roomId]);
 
-  const sendDrawEvent = (tool: string, data: any) => {
+  const sendDrawEvent = (type: string, data: any) => {
     const socket = wsRef.current;
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -60,7 +61,7 @@ export function useDrawingSocket({
       JSON.stringify({
         type: "draw_event",
         roomId,
-        shapeType: tool, 
+        shapeType: type, 
         shapeData: data,
       })
     );

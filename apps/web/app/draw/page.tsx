@@ -1,106 +1,67 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState, useEffect } from "react";
+import DrawingBoard from "../../components/DrawingBoard";
 
-const WS_URL = "ws://localhost:8080";
-
-export default function DrawPage() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const isDrawingRef = useRef(false);
-  const [connected, setConnected] = useState(false);
-  const [roomId, setRoomId] = useState<number | null>(null);
+function DrawContent() {
+  const [roomParam, setRoomParam] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // ✅ Safe browser-only access
     const params = new URLSearchParams(window.location.search);
-    const roomParam = params.get("room");
-    const tokenParam = params.get("token");
-
-    if (!roomParam || !tokenParam) return;
-
-    setRoomId(Number(roomParam));
-    setToken(tokenParam);
-
-    const ws = new WebSocket(`${WS_URL}?token=${tokenParam}`);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setConnected(true);
-      console.log("✅ WebSocket connected");
-    };
-
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "draw_event") {
-        drawFromData(msg.shapeData);
-      }
-    };
-
-    ws.onclose = () => console.log("❌ WebSocket disconnected");
-    return () => ws.close();
+    setRoomParam(params.get("room"));
+    setToken(params.get("token") || localStorage.getItem("token"));
+    setReady(true);
   }, []);
 
-  const sendDrawEvent = (shapeData: any) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && roomId) {
-      wsRef.current.send(
-        JSON.stringify({
-          type: "draw_event",
-          roomId,
-          shapeType: "pencil",
-          shapeData,
-        })
-      );
-    }
-  };
+  if (!ready) return <div className="container">Loading…</div>;
+  if (!roomParam) {
+    return (
+      <div className="container">
+        <p className="page-subtitle">Missing room ID.</p>
+        <a href="/rooms">← Back to rooms</a>
+      </div>
+    );
+  }
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    isDrawingRef.current = true;
-    const canvas = canvasRef.current!;
-    const ctx = canvas.getContext("2d")!;
-    ctx.beginPath();
-    ctx.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDrawingRef.current) return;
-    const canvas = canvasRef.current!;
-    const ctx = canvas.getContext("2d")!;
-    const x = e.nativeEvent.offsetX;
-    const y = e.nativeEvent.offsetY;
-
-    ctx.lineTo(x, y);
-    ctx.stroke();
-
-    sendDrawEvent({ x, y });
-  };
-
-  const handleMouseUp = () => {
-    isDrawingRef.current = false;
-  };
-
-  const drawFromData = (data: { x: number; y: number }) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d")!;
-    ctx.lineTo(data.x, data.y);
-    ctx.stroke();
-  };
+  if (!token) {
+    return (
+      <>
+        <nav className="nav">
+          <a href="/">Excalidraw</a>
+          <a href="/">Sign in</a>
+        </nav>
+        <div className="container">
+          <p className="page-subtitle">Sign in to draw in this room.</p>
+          <a href="/">← Sign in</a>
+        </div>
+      </>
+    );
+  }
 
   return (
-    <div className="flex flex-col items-center p-4">
-      <h2 className="text-lg mb-4">Drawing Room: {roomId ?? "Not Set"}</h2>
-      <canvas
-        ref={canvasRef}
-        width={800}
-        height={600}
-        className="border rounded shadow"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-      />
-      {!connected && <p className="text-red-500 mt-2">Not connected to server</p>}
-    </div>
+    <>
+      <nav className="nav">
+        <a href="/rooms">← Rooms</a>
+        <span style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
+          Room {roomParam}
+        </span>
+        <a
+          href={process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "http://localhost:3002"}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Metrics &amp; patterns
+        </a>
+      </nav>
+      <div style={{ padding: "1rem", display: "flex", flexDirection: "column", alignItems: "center", minHeight: "calc(100vh - 52px)" }}>
+        <DrawingBoard roomId={roomParam} token={token} />
+      </div>
+    </>
   );
+}
+
+export default function DrawPage() {
+  return <DrawContent />;
 }

@@ -1,10 +1,16 @@
+import path from "path";
+import { config } from "dotenv";
+
+config({ path: path.resolve(__dirname, "../../../.env") });
+
 import express, { Request, Response } from "express";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { JWT_SECRET } from "@repo/backend-common/config";
 import { prismaClient } from "@repo/db/client";
-import { middleware } from "./middleware";
+import { middleware, metricsMiddleware } from "./middleware";
+import { getMetrics, getContentType } from "./metrics";
 import {
   createUserSchema,
   signinSchema,
@@ -14,6 +20,7 @@ import {
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(metricsMiddleware);
 
 
 app.post("/signup", async (req: Request, res: Response): Promise<void> => {
@@ -122,6 +129,36 @@ app.get("/drawings/:roomId", async (req: Request, res: Response): Promise<void> 
   });
 
   res.status(200).json({ drawings });
+});
+
+app.get("/pattern-stats", async (_req: Request, res: Response): Promise<void> => {
+  const completions = await prismaClient.drawEvent.findMany({
+    where: { type: "completion" },
+    orderBy: { createdAt: "desc" },
+    take: 500,
+  });
+  const byLabel: Record<string, number> = {};
+  const recent: { id: number; roomId: number; detectedLabel: string; confidence: number; createdAt: string }[] = [];
+  for (const e of completions) {
+    const data = e.data as { detectedLabel?: string; confidence?: number } | null;
+    const label = (data?.detectedLabel as string) ?? "unknown";
+    byLabel[label] = (byLabel[label] ?? 0) + 1;
+    if (recent.length < 20) {
+      recent.push({
+        id: e.id,
+        roomId: e.roomId,
+        detectedLabel: label,
+        confidence: typeof data?.confidence === "number" ? data.confidence : 0,
+        createdAt: e.createdAt.toISOString(),
+      });
+    }
+  }
+  res.status(200).json({ byLabel, recent });
+});
+
+app.get("/metrics", async (_req: Request, res: Response): Promise<void> => {
+  res.set("Content-Type", getContentType());
+  res.end(await getMetrics());
 });
 
 app.listen(3001, () => {

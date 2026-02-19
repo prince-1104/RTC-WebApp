@@ -1,1 +1,1 @@
-{"root":["./src/index.ts","./src/handlers/drawevent.ts","./src/utils/broadcast.ts"],"version":"5.8.2"}
+{"root":["./src/index.ts","./src/metrics.ts","./src/handlers/drawevent.ts","./src/utils/broadcast.ts"],"version":"5.8.2"}

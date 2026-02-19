@@ -1,0 +1,21 @@
+{
+  "name": "@repo/pattern-detection",
+  "version": "1.0.0",
+  "description": "Pattern detection for hand-drawn shapes and time-series sketch recognition",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "typescript": "5.8.2"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

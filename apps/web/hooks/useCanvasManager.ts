@@ -1,11 +1,16 @@
 "use client";
 
 import { RefObject, useCallback, useRef, useState } from "react";
+import { detectShape } from "@repo/pattern-detection";
 import type { ToolType } from "../components/DrawingToolSelector";
 
+const PATTERN_CONFIDENCE_THRESHOLD = 0.55;
+
+export type ShapeType = ToolType | "completion";
+
 interface Shape {
-  shapeType: ToolType;
-  shapeData: any;
+  shapeType: ShapeType;
+  shapeData: Record<string, unknown>;
 }
 
 export function useCanvasManager({
@@ -17,7 +22,7 @@ export function useCanvasManager({
   canvasRef: RefObject<HTMLCanvasElement | null>;
   tool: ToolType;
   shapes: Shape[];
-  onSendDrawEventAction: (type: ToolType, data: any) => void;
+  onSendDrawEventAction: (type: ShapeType, data: Record<string, unknown>) => void;
 }) {
   const [start, setStart] = useState<{ x: number; y: number } | null>(null);
   const isDrawing = useRef(false);
@@ -56,16 +61,12 @@ export function useCanvasManager({
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
       ctx.beginPath();
-     if (path.length >= 2) {
-  const prev = path[path.length - 2]!;
-  ctx.moveTo(prev.x, prev.y);
-  ctx.lineTo(pos.x, pos.y);
-  ctx.stroke();
-}
-
-
-      ctx.lineTo(pos.x, pos.y);
-      ctx.stroke();
+      if (path.length >= 2) {
+        const prev = path[path.length - 2]!;
+        ctx.moveTo(prev.x, prev.y);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+      }
     }
   }, [tool]);
 
@@ -85,30 +86,103 @@ export function useCanvasManager({
       };
       onSendDrawEventAction(tool, shapeData);
     } else if (tool === "pencil") {
-      onSendDrawEventAction("pencil", { path: pencilPath.current, stroke: "#000" });
+      const pathData = { path: [...pencilPath.current], stroke: "#000" };
+      onSendDrawEventAction("pencil", pathData);
+
+      if (pencilPath.current.length >= 8) {
+        const result = detectShape(pencilPath.current);
+        if (
+          result.confidence >= PATTERN_CONFIDENCE_THRESHOLD &&
+          result.completion &&
+          result.label !== "unknown"
+        ) {
+          onSendDrawEventAction("completion", {
+            completion: result.completion,
+            detectedLabel: result.label,
+            confidence: result.confidence,
+          });
+        }
+      }
     }
 
     setStart(null);
   }, [tool, start, onSendDrawEventAction]);
 
   const drawShape = (ctx: CanvasRenderingContext2D, shape: Shape) => {
-    ctx.strokeStyle = shape.shapeData.stroke || "#000";
-    ctx.beginPath();
+    const stroke = (shape.shapeData.stroke as string) || "#000";
+    ctx.strokeStyle = stroke;
 
+    if (shape.shapeType === "completion") {
+      const comp = shape.shapeData.completion as {
+        type: string;
+        stroke?: string;
+        cx?: number;
+        cy?: number;
+        r?: number;
+        x?: number;
+        y?: number;
+        w?: number;
+        h?: number;
+        x1?: number;
+        y1?: number;
+        x2?: number;
+        y2?: number;
+        x3?: number;
+        y3?: number;
+        path?: { x: number; y: number }[];
+      };
+      if (!comp) return;
+      ctx.strokeStyle = comp.stroke || stroke;
+      if (comp.type === "circle" && comp.cx != null && comp.cy != null && comp.r != null) {
+        ctx.beginPath();
+        ctx.arc(comp.cx, comp.cy, comp.r, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (comp.type === "rectangle" && comp.x != null && comp.y != null && comp.w != null && comp.h != null) {
+        ctx.strokeRect(comp.x, comp.y, comp.w, comp.h);
+      } else if (comp.type === "line" && comp.x1 != null && comp.y1 != null && comp.x2 != null && comp.y2 != null) {
+        ctx.beginPath();
+        ctx.moveTo(comp.x1, comp.y1);
+        ctx.lineTo(comp.x2, comp.y2);
+        ctx.stroke();
+      } else if (comp.type === "triangle" && comp.x1 != null && comp.y1 != null && comp.x2 != null && comp.y2 != null && comp.x3 != null && comp.y3 != null) {
+        ctx.beginPath();
+        ctx.moveTo(comp.x1, comp.y1);
+        ctx.lineTo(comp.x2, comp.y2);
+        ctx.lineTo(comp.x3, comp.y3);
+        ctx.closePath();
+        ctx.stroke();
+      } else if (comp.type === "path" && Array.isArray(comp.path) && comp.path.length >= 2) {
+        const p0 = comp.path[0];
+        if (!p0) return;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < comp.path.length; i++) {
+          const p = comp.path[i];
+          if (p) ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+      }
+      return;
+    }
+
+    ctx.beginPath();
     if (shape.shapeType === "line") {
-      const { x1, y1, x2, y2 } = shape.shapeData;
+      const { x1, y1, x2, y2 } = shape.shapeData as { x1: number; y1: number; x2: number; y2: number };
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.stroke();
     } else if (shape.shapeType === "rectangle") {
-      const { x1, y1, x2, y2 } = shape.shapeData;
+      const { x1, y1, x2, y2 } = shape.shapeData as { x1: number; y1: number; x2: number; y2: number };
       ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
     } else if (shape.shapeType === "pencil") {
-      const { path } = shape.shapeData;
+      const { path } = shape.shapeData as { path: { x: number; y: number }[] };
       if (path.length < 2) return;
-      ctx.moveTo(path[0].x, path[0].y);
+      const first = path[0];
+      if (!first) return;
+      ctx.moveTo(first.x, first.y);
       for (let i = 1; i < path.length; i++) {
-        ctx.lineTo(path[i].x, path[i].y);
+        const p = path[i];
+        if (p) ctx.lineTo(p.x, p.y);
       }
       ctx.stroke();
     }
